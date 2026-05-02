@@ -5,3 +5,10 @@ edition = "2024"
 
 [dependencies]
 iced = { version = "0.14", features = ["image"] }
+reqwest = "0.13.3"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+aes-gcm = "0.10"
+rand = "0.8"
+pbkdf2 = "0.12"
+sha2 = "0.10"
+dotenvy = "0.15"
