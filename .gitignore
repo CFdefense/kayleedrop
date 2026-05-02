@@ -6,3 +6,6 @@ target/
 /target
 
 .env
+
+/data/destination/img.png
+/data/destination/txt.txt
