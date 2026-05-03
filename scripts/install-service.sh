@@ -37,8 +37,9 @@ TIMER_UNIT="${TIMER_UNIT:-${BIN_NAME}-daily.timer}"
 SERVICE_UNIT="${SERVICE_UNIT:-${BIN_NAME}-daily.service}"
 RANDOM_DELAY="${RANDOM_DELAY:-1h}"
 
-# launchd approximate daily wake (ignored on Linux): hour / minute local time
-LAUNCHD_HOUR="${LAUNCHD_HOUR:-9}"
+# launchd approximate daily wake (ignored on Linux): hour (0–23) / minute in **system local time**
+# Default 22:00 = 10:00 PM — use US/Eastern (`America/New_York`) in Settings → Date & Time for “10 PM EST/EDT”
+LAUNCHD_HOUR="${LAUNCHD_HOUR:-22}"
 LAUNCHD_MINUTE="${LAUNCHD_MINUTE:-0}"
 # macOS only: if set to a positive integer, plist uses StartInterval (seconds) instead of StartCalendarInterval
 LAUNCHD_START_INTERVAL="${LAUNCHD_START_INTERVAL:-}"
