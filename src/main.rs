@@ -65,10 +65,19 @@ Usage:
     );
 }
 
+/// Mirrors LaunchAgent plist + [`dotenvy::dotenv`]: cwd `.env` first, then legacy `env`
+/// in INSTALL_ROOT (`WorkingDirectory`).
+fn load_credentials_from_install_cwd() {
+    if let Ok(root) = std::env::current_dir() {
+        let _ = dotenvy::from_path(root.join(".env"));
+        let _ = dotenvy::from_path(root.join("env"));
+    }
+}
+
 /// Program entrypoint: routes to GUI mode (`argv.len() == 1`), encrypt CLI (`3` arguments), or help + exit `64`.
 fn main() -> Result<(), Box<dyn Error>> {
-    // Load `.env` into the process env
     dotenvy::dotenv().ok();
+    load_credentials_from_install_cwd();
 
     let args: Vec<String> = args().collect();
     let bin = args.first().map(String::as_str).unwrap_or("kayleedrop");

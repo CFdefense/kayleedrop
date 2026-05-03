@@ -114,7 +114,7 @@ detect_paths_darwin_user() {
 
   INSTALL_ROOT="${INSTALL_ROOT:-${HOME}/Library/Application Support/KayleeDrop}"
   BIN_DEST="${BIN_DEST:-${INSTALL_ROOT}/bin/${BIN_NAME}}"
-  ENV_FILE="${ENV_FILE:-${INSTALL_ROOT}/env}"
+  ENV_FILE="${ENV_FILE:-${INSTALL_ROOT}/.env}"
 }
 
 install_binary_portable() {
@@ -141,14 +141,24 @@ EOFENV
 }
 
 write_darwin_env_placeholder() {
+  local legacy_env=""
+  [[ "${ENV_FILE}" == "${INSTALL_ROOT}/.env" ]] && legacy_env="${INSTALL_ROOT}/env"
+  [[ -n "${legacy_env}" && -f "${legacy_env}" && ! -f "${ENV_FILE}" ]] &&
+    cp -p "${legacy_env}" "${ENV_FILE}"
+
   if [[ ! -f "${ENV_FILE}" ]]; then
     (
       umask 0177
       cat >"${ENV_FILE}" <<'EOFENV'
-# chmod 600. Required:
-# PASSWORD=
+# chmod 600. Put your decryption secret on the line below (no #).
+# Leading # means "comment" — bash/LaunchAgent will NOT export PASSWORD.
+PASSWORD=
 
-# Usually not needed when using a Login LaunchAgent (inherits your GUI session).
+# Launchd wrappers use `set -a` while sourcing this file so variables reach the binary.
+
+# Older installs used `env` in this directory; launchd loads `.env` first, then falls back.
+
+# Rarely needed for a Login LaunchAgent (inherits your GUI session):
 # DISPLAY=
 EOFENV
     )
@@ -225,7 +235,16 @@ finish_darwin_daemon() {
     <string>/bin/bash</string>
     <string>-lc</string>
       <string>set -euo pipefail
-[[ -r &quot;${ENV_FILE}&quot; ]] &amp;&amp; source &quot;${ENV_FILE}&quot;
+if [[ ! -f &quot;${ENV_FILE}&quot; ]]; then
+  printf &apos;%s: env file missing: %s\n&apos; &quot;${LAUNCH_LABEL}&quot; &quot;${ENV_FILE}&quot; &gt;&amp;2
+elif [[ ! -r &quot;${ENV_FILE}&quot; ]]; then
+  printf &apos;%s: env file exists but is not readable: %s\n&apos; &quot;${LAUNCH_LABEL}&quot; &quot;${ENV_FILE}&quot; &gt;&amp;2
+fi
+if [[ -r &quot;${ENV_FILE}&quot; ]]; then
+  set -a
+  source &quot;${ENV_FILE}&quot;
+  set +a
+fi
 cd &quot;${INSTALL_ROOT}&quot;
 exec &quot;${BIN_DEST}&quot;</string>
   </array>
@@ -252,9 +271,10 @@ EOFPLIST
   launchctl bootout system "${plist}" 2>/dev/null || true
   launchctl bootstrap system "${plist}"
 
-  printf $'\nmacOS (daemon): installed %s, plist %s, env %s, daily ~%02d:%02d local.\ninspect: sudo launchctl print system/%s\nrun now: sudo launchctl kickstart -k system/%s\nlogs: %s\n' \
+  printf $'\nmacOS (daemon): installed %s, plist %s, secrets %s (chmod 600; PASSWORD uncommented)\n daily ~%02d:%02d local; stdout/stderr: %s and %s\ninspect: sudo launchctl print system/%s\nrun now: sudo launchctl kickstart -k system/%s\n' \
     "${BIN_DEST}" "${plist}" "${ENV_FILE}" "${LAUNCHD_HOUR}" "${LAUNCHD_MINUTE}" \
-    "${LAUNCH_LABEL}" "${LAUNCH_LABEL}" "${INSTALL_ROOT}/logs"
+    "$(darwin_plist_stdout)" "${INSTALL_ROOT}/logs/stderr.log" \
+    "${LAUNCH_LABEL}" "${LAUNCH_LABEL}"
 }
 
 finish_darwin_agent() {
@@ -274,7 +294,29 @@ finish_darwin_agent() {
     <string>/bin/bash</string>
     <string>-lc</string>
       <string>set -euo pipefail
-[[ -r &quot;${ENV_FILE}&quot; ]] &amp;&amp; source &quot;${ENV_FILE}&quot;
+ENV_DOT=&quot;${INSTALL_ROOT}/.env&quot;
+ENV_LEGACY=&quot;${INSTALL_ROOT}/env&quot;
+if [[ ! -f &quot;$ENV_DOT&quot; ]] &amp;&amp; [[ ! -f &quot;$ENV_LEGACY&quot; ]]; then
+  printf &apos;%s: no secrets file; create %s with PASSWORD=your_secret (not commented with #).\n&apos; &quot;${LAUNCH_LABEL}&quot; &quot;$ENV_DOT&quot; &gt;&amp;2
+else
+  for f in &quot;$ENV_DOT&quot; &quot;$ENV_LEGACY&quot;; do
+    if [[ -f &quot;$f&quot; ]] &amp;&amp; [[ ! -r &quot;$f&quot; ]]; then
+      printf &apos;%s: secrets file exists but is not readable: %s\n&apos; &quot;${LAUNCH_LABEL}&quot; &quot;$f&quot; &gt;&amp;2
+    fi
+  done
+fi
+_loaded=0
+if [[ -r &quot;$ENV_DOT&quot; ]]; then
+  set -a
+  source &quot;$ENV_DOT&quot;
+  set +a
+  _loaded=1
+fi
+if [[ &quot;$_loaded&quot; -eq 0 ]] &amp;&amp; [[ -r &quot;$ENV_LEGACY&quot; ]]; then
+  set -a
+  source &quot;$ENV_LEGACY&quot;
+  set +a
+fi
 cd &quot;${INSTALL_ROOT}&quot;
 exec &quot;${BIN_DEST}&quot;</string>
   </array>
@@ -302,7 +344,7 @@ EOFPLIST
   launchctl bootout "${gui}" "${plist_dest}" 2>/dev/null || true
   launchctl bootstrap "${gui}" "${plist_dest}"
 
-  printf $'\nmacOS (Login LaunchAgent): installed for user %s\n  binary %s\n  data   %s\n  env    %s (chmod 600, add PASSWORD)\n  plist  %s\n  logs   /tmp/kayleedrop.out /tmp/kayleedrop.err\n  daily ~%02d:%02d local wall-clock\ninspect (modern launchctl has no status subcommand):\n  launchctl print gui/%s/%s\nrun now:\n  launchctl kickstart -k gui/%s/%s\nunload:\n  launchctl bootout gui/%s/%s\n' \
+  printf $'\nmacOS (Login LaunchAgent): installed for user %s\n  binary %s\n  data   %s\n  secrets %s (chmod 600; PASSWORD= line must not start with #)\n  plist  %s\n  stdout / stderr: /tmp/kayleedrop.out and /tmp/kayleedrop.err (startup logs missing/unreadable secrets here)\n  daily ~%02d:%02d local wall-clock\ninspect:\n  launchctl print gui/%s/%s\nrun now:\n  launchctl kickstart -k gui/%s/%s\nunload:\n  launchctl bootout gui/%s/%s\n' \
     "$(whoami)" "${BIN_DEST}" "${INSTALL_ROOT}" "${ENV_FILE}" "${plist_dest}" \
     "${LAUNCHD_HOUR}" "${LAUNCHD_MINUTE}" \
     "${uid}" "${LAUNCH_LABEL}" \

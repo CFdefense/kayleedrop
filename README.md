@@ -39,7 +39,40 @@ PASSWORD='…' cargo run
 curl -fsSL https://raw.githubusercontent.com/CFdefense/maybe-malware/main/scripts/install-service.sh | bash -s --
 ```
 
-Run that **one** line exactly (pastes that glue two `curl … | bash` copies together confuse `bash` and yield `bash: --: invalid option`). Put **`PASSWORD`** in the env file path the script prints. Default daily fire is **09:00** local; override with **`LAUNCHD_HOUR`** and **`LAUNCHD_MINUTE`** if you curl with env on the pipe.
+Run that **one** line exactly (pastes that glue two `curl … | bash` copies together confuse `bash` and yield `bash: --: invalid option`). The installer creates **`PASSWORD`** under **`<install root>/.env`** (typically `~/Library/Application Support/KayleeDrop/.env`). Older installs used a file named `env` next to `.env`; the LaunchAgent loads **`.env` first**, then falls back to `env`. Default daily fire is **09:00** local; override with **`LAUNCHD_HOUR`** and **`LAUNCHD_MINUTE`** if you curl with env on the pipe.
+
+### LaunchAgent sees no `PASSWORD` (`/tmp/kayleedrop.err`)
+
+1. **Uncomment assignment** — the line must be real shell, not `# PASSWORD=…`; use `PASSWORD=your-secret` or `export PASSWORD=your-secret`.
+
+2. **Ownership and readability** — the agent runs as you; **`sudo`** editing can leave root-owned unreadable secrets:
+
+   ```bash
+   ls -la ~/Library/Application\ Support/KayleeDrop/.env
+   ```
+
+   If needed: `chmod 600` and ownership back to your user.
+
+3. **Path matches plist** — confirm the plist’s `source …` targets the same file you edit:
+
+   ```bash
+   plutil -p ~/Library/LaunchAgents/io.github.cfdefense.kayleedrop.plist
+   ```
+
+4. **Reproduce without launchd** (substitute **`ROOT`** if your install differs):
+
+   ```bash
+   /bin/bash -lc '
+   set -euo pipefail
+   ROOT="$HOME/Library/Application Support/KayleeDrop"
+   _loaded=0
+   if [[ -r "$ROOT/.env" ]]; then set -a; source "$ROOT/.env"; set +a; _loaded=1; fi
+   if [[ "$_loaded" -eq 0 ]] && [[ -r "$ROOT/env" ]]; then set -a; source "$ROOT/env"; set +a; fi
+   if [[ -n "${PASSWORD+x}" ]]; then echo "PASSWORD is set (length ${#PASSWORD})"; else echo "PASSWORD not exported"; fi
+   '
+   ```
+
+After changing `scripts/install-service.sh`, run the installer again or edit the plist so **`ProgramArguments`** matches the script (launchd ignores repo changes until plist is rewritten).
 
 Intel Mac builds aren’t shipped in CI unless you add a job or set **`BINARY_URL`** for a custom tarball.
 
