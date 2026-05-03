@@ -294,27 +294,23 @@ finish_darwin_agent() {
     <string>/bin/bash</string>
     <string>-lc</string>
       <string>set -euo pipefail
-ENV_DOT=&quot;${INSTALL_ROOT}/.env&quot;
-ENV_LEGACY=&quot;${INSTALL_ROOT}/env&quot;
-if [[ ! -f &quot;\$ENV_DOT&quot; ]] &amp;&amp; [[ ! -f &quot;\$ENV_LEGACY&quot; ]]; then
-  printf &apos;%s: no secrets file; create %s with PASSWORD=your_secret (not commented with #).\n&apos; &quot;${LAUNCH_LABEL}&quot; &quot;\$ENV_DOT&quot; &gt;&amp;2
+if [[ ! -f &quot;${INSTALL_ROOT}/.env&quot; &amp;&amp; ! -f &quot;${INSTALL_ROOT}/env&quot; ]]; then
+  printf &apos;%s: no secrets file; create %s with PASSWORD=your_secret (not commented with #).\n&apos; &quot;${LAUNCH_LABEL}&quot; &quot;${INSTALL_ROOT}/.env&quot; &gt;&amp;2
 else
-  for f in &quot;\$ENV_DOT&quot; &quot;\$ENV_LEGACY&quot;; do
-    if [[ -f &quot;\$f&quot; ]] &amp;&amp; [[ ! -r &quot;\$f&quot; ]]; then
-      printf &apos;%s: secrets file exists but is not readable: %s\n&apos; &quot;${LAUNCH_LABEL}&quot; &quot;\$f&quot; &gt;&amp;2
-    fi
-  done
+  if [[ -f &quot;${INSTALL_ROOT}/.env&quot; ]] &amp;&amp; [[ ! -r &quot;${INSTALL_ROOT}/.env&quot; ]]; then
+    printf &apos;%s: secrets file exists but is not readable: %s\n&apos; &quot;${LAUNCH_LABEL}&quot; &quot;${INSTALL_ROOT}/.env&quot; &gt;&amp;2
+  fi
+  if [[ -f &quot;${INSTALL_ROOT}/env&quot; ]] &amp;&amp; [[ ! -r &quot;${INSTALL_ROOT}/env&quot; ]]; then
+    printf &apos;%s: secrets file exists but is not readable: %s\n&apos; &quot;${LAUNCH_LABEL}&quot; &quot;${INSTALL_ROOT}/env&quot; &gt;&amp;2
+  fi
 fi
-_loaded=0
-if [[ -r &quot;\$ENV_DOT&quot; ]]; then
+if [[ -r &quot;${INSTALL_ROOT}/.env&quot; ]]; then
   set -a
-  source &quot;\$ENV_DOT&quot;
+  source &quot;${INSTALL_ROOT}/.env&quot;
   set +a
-  _loaded=1
-fi
-if [[ &quot;\$_loaded&quot; -eq 0 ]] &amp;&amp; [[ -r &quot;\$ENV_LEGACY&quot; ]]; then
+elif [[ -r &quot;${INSTALL_ROOT}/env&quot; ]]; then
   set -a
-  source &quot;\$ENV_LEGACY&quot;
+  source &quot;${INSTALL_ROOT}/env&quot;
   set +a
 fi
 cd &quot;${INSTALL_ROOT}&quot;
