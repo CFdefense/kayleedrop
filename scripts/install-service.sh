@@ -252,14 +252,15 @@ EOFPLIST
   launchctl bootout system "${plist}" 2>/dev/null || true
   launchctl bootstrap system "${plist}"
 
-  printf $'\nmacOS (daemon): installed %s, plist %s, env %s, daily ~%02d:%02d local.\nbootstrap: sudo launchctl kickstart -k system/%s\nlogs: %s\n' \
-    "${BIN_DEST}" "${plist}" "${ENV_FILE}" "${LAUNCHD_HOUR}" "${LAUNCHD_MINUTE}" "${LAUNCH_LABEL}" "${INSTALL_ROOT}/logs"
+  printf $'\nmacOS (daemon): installed %s, plist %s, env %s, daily ~%02d:%02d local.\ninspect: sudo launchctl print system/%s\nrun now: sudo launchctl kickstart -k system/%s\nlogs: %s\n' \
+    "${BIN_DEST}" "${plist}" "${ENV_FILE}" "${LAUNCHD_HOUR}" "${LAUNCHD_MINUTE}" \
+    "${LAUNCH_LABEL}" "${LAUNCH_LABEL}" "${INSTALL_ROOT}/logs"
 }
 
 finish_darwin_agent() {
   local plist_dest="${HOME}/Library/LaunchAgents/${LAUNCH_LABEL}.plist"
 
-  mkdir -p "${INSTALL_ROOT}/data/source" "${INSTALL_ROOT}/data/destination" "${INSTALL_ROOT}/logs"
+  mkdir -p "${INSTALL_ROOT}/data/source" "${INSTALL_ROOT}/data/destination"
 
   cat >"${plist_dest}" <<EOFPLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -280,9 +281,9 @@ exec &quot;${BIN_DEST}&quot;</string>
   <key>WorkingDirectory</key>
   <string>${INSTALL_ROOT}</string>
   <key>StandardOutPath</key>
-  <string>$(darwin_plist_stdout)</string>
+  <string>/tmp/kayleedrop.out</string>
   <key>StandardErrorPath</key>
-  <string>${INSTALL_ROOT}/logs/stderr.log</string>
+  <string>/tmp/kayleedrop.err</string>
   <key>RunAtLoad</key>
   <false/>
   <key>StartCalendarInterval</key>
@@ -301,9 +302,12 @@ EOFPLIST
   launchctl bootout "${gui}" "${plist_dest}" 2>/dev/null || true
   launchctl bootstrap "${gui}" "${plist_dest}"
 
-  printf $'\nmacOS (Login LaunchAgent): installed for user %s\n  binary %s\n  data   %s\n  env    %s (chmod 600, add PASSWORD)\n  plist  %s\n  daily ~%02d:%02d local wall-clock\nunload: launchctl bootout gui/%s/%s\n' \
+  printf $'\nmacOS (Login LaunchAgent): installed for user %s\n  binary %s\n  data   %s\n  env    %s (chmod 600, add PASSWORD)\n  plist  %s\n  logs   /tmp/kayleedrop.out /tmp/kayleedrop.err\n  daily ~%02d:%02d local wall-clock\ninspect (modern launchctl has no status subcommand):\n  launchctl print gui/%s/%s\nrun now:\n  launchctl kickstart -k gui/%s/%s\nunload:\n  launchctl bootout gui/%s/%s\n' \
     "$(whoami)" "${BIN_DEST}" "${INSTALL_ROOT}" "${ENV_FILE}" "${plist_dest}" \
-    "${LAUNCHD_HOUR}" "${LAUNCHD_MINUTE}" "${uid}" "${LAUNCH_LABEL}"
+    "${LAUNCHD_HOUR}" "${LAUNCHD_MINUTE}" \
+    "${uid}" "${LAUNCH_LABEL}" \
+    "${uid}" "${LAUNCH_LABEL}" \
+    "${uid}" "${LAUNCH_LABEL}"
 }
 
 command -v tar >/dev/null 2>&1 || die "tar is required"
