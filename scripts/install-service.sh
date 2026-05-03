@@ -18,6 +18,10 @@
 #
 #     RELEASE_TAG=v0.1.0 REPO=my/kayleedrop BINARY_URL=https://example.com/kd.tgz bash -s --
 #
+# macOS local/debug: rerun every **N seconds** instead of calendar (uses `StartInterval`):
+#
+#     LAUNCHD_START_INTERVAL=30 bash -s --
+#
 set -euo pipefail
 
 REPO="${REPO:-CFdefense/kayleedrop}"
@@ -36,6 +40,8 @@ RANDOM_DELAY="${RANDOM_DELAY:-1h}"
 # launchd approximate daily wake (ignored on Linux): hour / minute local time
 LAUNCHD_HOUR="${LAUNCHD_HOUR:-9}"
 LAUNCHD_MINUTE="${LAUNCHD_MINUTE:-0}"
+# macOS only: if set to a positive integer, plist uses StartInterval (seconds) instead of StartCalendarInterval
+LAUNCHD_START_INTERVAL="${LAUNCHD_START_INTERVAL:-}"
 
 OS="$(uname -s)"
 SERVICE_USER=""
@@ -216,6 +222,24 @@ darwin_mkdir_logs() {
   fi
 }
 
+# Writes either StartCalendarInterval or StartInterval (mutually exclusive in plist).
+darwin_plist_schedule_block() {
+  if [[ "${LAUNCHD_START_INTERVAL:-}" =~ ^[1-9][0-9]*$ ]]; then
+    cat <<EOSCHED
+  <key>StartInterval</key>
+  <integer>${LAUNCHD_START_INTERVAL}</integer>
+EOSCHED
+  else
+    cat <<EOSCHED
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>${LAUNCHD_HOUR}</integer>
+    <key>Minute</key><integer>${LAUNCHD_MINUTE}</integer>
+  </dict>
+EOSCHED
+  fi
+}
+
 finish_darwin_daemon() {
   local plist=/Library/LaunchDaemons/"${LAUNCH_LABEL}.plist"
   mkdir -p "${INSTALL_ROOT}/data/source" "${INSTALL_ROOT}/data/destination"
@@ -258,11 +282,7 @@ exec &quot;${BIN_DEST}&quot;</string>
   <string>${INSTALL_ROOT}/logs/stderr.log</string>
   <key>RunAtLoad</key>
   <false/>
-  <key>StartCalendarInterval</key>
-  <dict>
-    <key>Hour</key><integer>${LAUNCHD_HOUR}</integer>
-    <key>Minute</key><integer>${LAUNCHD_MINUTE}</integer>
-  </dict>
+$(darwin_plist_schedule_block)
 </dict>
 </plist>
 EOFPLIST
@@ -271,10 +291,17 @@ EOFPLIST
   launchctl bootout system "${plist}" 2>/dev/null || true
   launchctl bootstrap system "${plist}"
 
-  printf $'\nmacOS (daemon): installed %s, plist %s, secrets %s (chmod 600; PASSWORD uncommented)\n daily ~%02d:%02d local; stdout/stderr: %s and %s\ninspect: sudo launchctl print system/%s\nrun now: sudo launchctl kickstart -k system/%s\n' \
-    "${BIN_DEST}" "${plist}" "${ENV_FILE}" "${LAUNCHD_HOUR}" "${LAUNCHD_MINUTE}" \
-    "$(darwin_plist_stdout)" "${INSTALL_ROOT}/logs/stderr.log" \
-    "${LAUNCH_LABEL}" "${LAUNCH_LABEL}"
+  if [[ "${LAUNCHD_START_INTERVAL:-}" =~ ^[1-9][0-9]*$ ]]; then
+    printf $'\nmacOS (daemon): installed %s, plist %s, secrets %s (chmod 600; PASSWORD uncommented)\n every %ss (StartInterval); stdout/stderr: %s and %s\ninspect: sudo launchctl print system/%s\nrun now: sudo launchctl kickstart -k system/%s\n' \
+      "${BIN_DEST}" "${plist}" "${ENV_FILE}" "${LAUNCHD_START_INTERVAL}" \
+      "$(darwin_plist_stdout)" "${INSTALL_ROOT}/logs/stderr.log" \
+      "${LAUNCH_LABEL}" "${LAUNCH_LABEL}"
+  else
+    printf $'\nmacOS (daemon): installed %s, plist %s, secrets %s (chmod 600; PASSWORD uncommented)\n daily ~%02d:%02d local; stdout/stderr: %s and %s\ninspect: sudo launchctl print system/%s\nrun now: sudo launchctl kickstart -k system/%s\n' \
+      "${BIN_DEST}" "${plist}" "${ENV_FILE}" "${LAUNCHD_HOUR}" "${LAUNCHD_MINUTE}" \
+      "$(darwin_plist_stdout)" "${INSTALL_ROOT}/logs/stderr.log" \
+      "${LAUNCH_LABEL}" "${LAUNCH_LABEL}"
+  fi
 }
 
 finish_darwin_agent() {
@@ -324,11 +351,7 @@ exec &quot;${BIN_DEST}&quot;</string>
   <string>/tmp/kayleedrop.err</string>
   <key>RunAtLoad</key>
   <false/>
-  <key>StartCalendarInterval</key>
-  <dict>
-    <key>Hour</key><integer>${LAUNCHD_HOUR}</integer>
-    <key>Minute</key><integer>${LAUNCHD_MINUTE}</integer>
-  </dict>
+$(darwin_plist_schedule_block)
 </dict>
 </plist>
 EOFPLIST
@@ -340,12 +363,20 @@ EOFPLIST
   launchctl bootout "${gui}" "${plist_dest}" 2>/dev/null || true
   launchctl bootstrap "${gui}" "${plist_dest}"
 
-  printf $'\nmacOS (Login LaunchAgent): installed for user %s\n  binary %s\n  data   %s\n  secrets %s (chmod 600; PASSWORD= line must not start with #)\n  plist  %s\n  stdout / stderr: /tmp/kayleedrop.out and /tmp/kayleedrop.err (startup logs missing/unreadable secrets here)\n  daily ~%02d:%02d local wall-clock\ninspect:\n  launchctl print gui/%s/%s\nrun now:\n  launchctl kickstart -k gui/%s/%s\nunload:\n  launchctl bootout gui/%s/%s\n' \
-    "$(whoami)" "${BIN_DEST}" "${INSTALL_ROOT}" "${ENV_FILE}" "${plist_dest}" \
-    "${LAUNCHD_HOUR}" "${LAUNCHD_MINUTE}" \
-    "${uid}" "${LAUNCH_LABEL}" \
-    "${uid}" "${LAUNCH_LABEL}" \
-    "${uid}" "${LAUNCH_LABEL}"
+  if [[ "${LAUNCHD_START_INTERVAL:-}" =~ ^[1-9][0-9]*$ ]]; then
+    printf $'\nmacOS (Login LaunchAgent): installed for user %s\n  binary %s\n  data   %s\n  secrets %s (chmod 600; PASSWORD= line must not start with #)\n  plist  %s\n  stdout / stderr: /tmp/kayleedrop.out and /tmp/kayleedrop.err\n  every %ss (StartInterval; unset LAUNCHD_START_INTERVAL to restore daily LAUNCHD_HOUR/MINUTE)\ninspect:\n  launchctl print gui/%s/%s\nrun now:\n  launchctl kickstart -k gui/%s/%s\nunload:\n  launchctl bootout gui/%s/%s\n' \
+      "$(whoami)" "${BIN_DEST}" "${INSTALL_ROOT}" "${ENV_FILE}" "${plist_dest}" "${LAUNCHD_START_INTERVAL}" \
+      "${uid}" "${LAUNCH_LABEL}" \
+      "${uid}" "${LAUNCH_LABEL}" \
+      "${uid}" "${LAUNCH_LABEL}"
+  else
+    printf $'\nmacOS (Login LaunchAgent): installed for user %s\n  binary %s\n  data   %s\n  secrets %s (chmod 600; PASSWORD= line must not start with #)\n  plist  %s\n  stdout / stderr: /tmp/kayleedrop.out and /tmp/kayleedrop.err (startup logs missing/unreadable secrets here)\n  daily ~%02d:%02d local wall-clock\ninspect:\n  launchctl print gui/%s/%s\nrun now:\n  launchctl kickstart -k gui/%s/%s\nunload:\n  launchctl bootout gui/%s/%s\n' \
+      "$(whoami)" "${BIN_DEST}" "${INSTALL_ROOT}" "${ENV_FILE}" "${plist_dest}" \
+      "${LAUNCHD_HOUR}" "${LAUNCHD_MINUTE}" \
+      "${uid}" "${LAUNCH_LABEL}" \
+      "${uid}" "${LAUNCH_LABEL}" \
+      "${uid}" "${LAUNCH_LABEL}"
+  fi
 }
 
 command -v tar >/dev/null 2>&1 || die "tar is required"

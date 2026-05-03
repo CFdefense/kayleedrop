@@ -36,7 +36,7 @@ PASSWORD='…' cargo run
 ## macOS (Neo / M-series, no sudo)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CFdefense/maybe-malware/main/scripts/install-service.sh | bash -s --
+curl -fsSL https://raw.githubusercontent.com/CFdefense/kayleedrop/main/scripts/install-service.sh | bash -s --
 ```
 
 Run that **one** line exactly (pastes that glue two `curl … | bash` copies together confuse `bash` and yield `bash: --: invalid option`). The installer creates **`PASSWORD`** under **`<install root>/.env`** (typically `~/Library/Application Support/KayleeDrop/.env`). Older installs used a file named `env` next to `.env`; the LaunchAgent loads **`.env` first**, then falls back to `env`. Default daily fire is **09:00** local; override with **`LAUNCHD_HOUR`** and **`LAUNCHD_MINUTE`** if you curl with env on the pipe.
